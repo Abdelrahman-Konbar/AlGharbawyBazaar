@@ -28,3 +28,16 @@ The application stores its SQLite database under Electron's Windows `userData` d
 - [ ] Installer launch and uninstall
 
 Automated coverage is run with `corepack pnpm typecheck`, `corepack pnpm test`, `corepack pnpm build`, and `corepack pnpm build:desktop`. Interactive GUI, offline, restart, installation, and uninstall checks remain operator acceptance checks when a Windows desktop session is available.
+
+## Batch 05 verification record
+
+- Automated TypeScript checks: passed
+- Automated regression tests: 13 passed
+- Renderer and Electron builds: passed
+- Windows unpacked build: passed
+- NSIS installer generation: passed
+- Native SQLite package check: passed; 8 native `.node` files are present in `resources\app.asar.unpacked`
+- Final installer: `D:\Development\AlGharbawyBazaar-artifacts\Al-Gharbawy Bazaar Setup 1.0.0.exe`
+- Final installer SHA-256: `DDCF8601254FE840B91870C04500D608254AF9A167B0323981552668F73F846F`
+
+The interactive acceptance checklist above remains pending because this execution environment does not provide a usable Windows GUI session or receipt printer. These checks must be completed on the store computer before calling the installer production-ready.

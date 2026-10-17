@@ -6,6 +6,7 @@ import { Logo } from '../ui'
 
 export default function Login() {
   const { t, lang, setLang, login } = useStore()
+  const desktop = typeof window !== 'undefined' && Boolean(window.electronAPI)
   const [u, setU] = useState('admin')
   const [p, setP] = useState('')
   const [err, setErr] = useState<{ u?: string; p?: string; form?: string }>({})
@@ -63,7 +64,7 @@ export default function Login() {
             {loading ? <Loader2 size={18} className="animate-spin" /> : <>{t('تسجيل الدخول', 'Sign in')} <ArrowRight size={17} className="rtl:rotate-180" /></>}
           </Button>
         </form>
-        <p className="text-center text-xs text-muted">{t('نسخة تجريبية — البيانات محفوظة في المتصفح فقط', 'Prototype — data is stored in this browser only')}</p>
+        <p className="text-center text-xs text-muted">{desktop ? t('نظام محلي آمن — البيانات محفوظة على هذا الكمبيوتر', 'Secure local system — data is stored on this computer') : t('نسخة تجريبية — البيانات محفوظة في المتصفح فقط', 'Prototype — data is stored in this browser only')}</p>
       </div>
     </div>
   )

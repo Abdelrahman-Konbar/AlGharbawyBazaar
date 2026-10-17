@@ -16,6 +16,7 @@ let service: BazaarService | undefined
 let backupManager: BackupManager | undefined
 let databasePath = ''
 const sessions = new Map<number, { token: string; session: UserSession; lastSeen: number }>()
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000
 
 function registerIpc() {
   const invoke = <K extends keyof Omit<ElectronApi, 'platform'>>(name: K, permission: Permission | null, handler: (...args: any[]) => unknown) => {
@@ -31,7 +32,7 @@ function registerIpc() {
     })
   }
 
-  ipcMain.handle('authStatus', (event) => ({ ...database!.authStatus(), session: sessions.get(event.sender.id)?.session ?? null }))
+  ipcMain.handle('authStatus', (event) => ({ ...database!.authStatus(), session: getActiveSession(event.sender.id)?.session ?? null }))
   ipcMain.handle('login', async (event, username: string, password: string) => {
     try {
       const session = database!.authenticate(username, password)
@@ -63,10 +64,24 @@ function randomToken() {
 }
 
 function requirePermission(senderId: number, permission: Permission) {
-  const current = sessions.get(senderId)
+  const current = getActiveSession(senderId)
   if (!current) throw new DomainError('AUTHENTICATION_ERROR', 'Sign-in required')
   current.lastSeen = Date.now()
   if (!permissionsForRole(current.session.role).includes(permission)) throw new DomainError('AUTHORIZATION_ERROR', 'You are not allowed to perform this action')
+}
+
+function getActiveSession(senderId: number) {
+  const current = sessions.get(senderId)
+  if (!current) return undefined
+  if (Date.now() - current.lastSeen > SESSION_TTL_MS) {
+    sessions.delete(senderId)
+    return undefined
+  }
+  return current
+}
+
+function removeDatabaseSidecars() {
+  for (const suffix of ['-wal', '-shm']) fs.rmSync(databasePath + suffix, { force: true })
 }
 
 async function restoreBackupFromDialog() {
@@ -77,12 +92,13 @@ async function restoreBackupFromDialog() {
   const safety = await backupManager!.createBackup('pre-restore')
   database!.close()
   try {
+    removeDatabaseSidecars()
     fs.copyFileSync(source, databasePath)
     database = new BazaarDatabase(databasePath)
     service = new BazaarService(database)
     return { restored: true, path: source }
   } catch (error) {
-    try { fs.copyFileSync(safety.path, databasePath) } catch { /* preserve original error */ }
+    try { removeDatabaseSidecars(); fs.copyFileSync(safety.path, databasePath) } catch { /* preserve original error */ }
     database = new BazaarDatabase(databasePath)
     service = new BazaarService(database)
     throw error

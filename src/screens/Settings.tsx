@@ -6,6 +6,7 @@ import { Button, Card, Field, PageHeader, Confirm, Segmented, useToast, inputCls
 
 export default function Settings() {
   const { state, t, saveSettings, restore, reset, refresh, lang, setLang, savedAt } = useStore()
+  const desktop = typeof window !== 'undefined' && Boolean(window.electronAPI)
   const f = useFmt()
   const toast = useToast()
   const [s, setS] = useState(state.settings)
@@ -95,14 +96,14 @@ export default function Settings() {
         <h3 className="flex items-center gap-2 font-semibold text-forest"><Database size={17} />{t('البيانات والنسخ الاحتياطي', 'Data & backup')}</h3>
         <div className="mt-3 flex items-start gap-3 rounded-xl border border-amber/40 bg-amber-soft/60 px-4 py-3 text-sm text-[#7a5016]">
           <ShieldAlert size={17} className="mt-0.5 shrink-0" />
-          <p>{t('هذه نسخة تجريبية: البيانات محفوظة في تخزين هذا المتصفح فقط (localStorage) وليست قاعدة بيانات إنتاجية. صدّر نسخة احتياطية بانتظام.', 'Prototype storage: data lives only in this browser (localStorage), not a production database. Export backups regularly.')}</p>
+          <p>{desktop ? t('البيانات محفوظة محليًا في قاعدة بيانات هذا الكمبيوتر. أنشئ نسخًا احتياطية بانتظام.', 'Data is stored locally in this computer database. Create backups regularly.') : t('هذه نسخة تجريبية: البيانات محفوظة في تخزين هذا المتصفح فقط (localStorage) وليست قاعدة بيانات إنتاجية. صدّر نسخة احتياطية بانتظام.', 'Prototype storage: data lives only in this browser (localStorage), not a production database. Export backups regularly.')}</p>
         </div>
         <p className="num mt-3 text-xs text-muted">{t('آخر حفظ تلقائي', 'Last auto-save')}: {f.time(savedAt)} · {state.products.length} {t('منتج', 'products')} · {state.sales.length} {t('فاتورة', 'invoices')} · {state.movements.length} {t('حركة', 'movements')}</p>
         <p className="num mt-2 text-xs text-muted">{backupStatus?.lastBackupAt ? `${t('Ø¢Ø®Ø± Ù†Ø³Ø®Ø© Ù…Ø­Ù„ÙŠØ©', 'Last local backup')}: ${f.time(backupStatus.lastBackupAt)}` : t('Ù„Ù… ØªÙ†Ø´Ø£ Ù†Ø³Ø®Ø© Ù…Ø­Ù„ÙŠØ© Ø¨Ø¹Ø¯', 'No local backup created yet')}</p>
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <Button icon={<Download size={16} />} onClick={exportBackup}>{t('تصدير نسخة احتياطية', 'Export backup')}</Button>
           <Button icon={<Upload size={16} />} onClick={restoreFromSource}>{t('استعادة من ملف', 'Restore from file')}</Button>
-          <Button variant="ghost" className="!text-[#a63d2f]" icon={<RotateCcw size={16} />} onClick={() => setResetAsk(true)}>{t('إعادة بيانات العرض', 'Reset demo data')}</Button>
+          <Button variant="ghost" className="!text-[#a63d2f]" icon={<RotateCcw size={16} />} onClick={() => setResetAsk(true)}>{desktop ? t('مسح بيانات النظام', 'Clear application data') : t('إعادة بيانات العرض', 'Reset demo data')}</Button>
         </div>
         <input ref={file} type="file" accept="application/json,.json" className="hidden" onChange={onFile} />
       </Card>
@@ -110,8 +111,8 @@ export default function Settings() {
       <Confirm open={!!pending} onClose={() => setPending(null)} danger title={t('استعادة النسخة الاحتياطية؟', 'Restore this backup?')} confirmLabel={t('استعادة', 'Restore')}
         body={pending && <>{t('سيتم استبدال كل البيانات الحالية بمحتوى الملف:', 'All current data will be replaced with the file contents:')}<span className="num mt-2 block font-medium">{pending.products.length} {t('منتج', 'products')} · {pending.sales.length} {t('فاتورة', 'invoices')}</span></>}
         onConfirm={() => { const data = pending!; Promise.resolve(restore(data)).then(() => { setS(data.settings); toast(t('تمت الاستعادة بنجاح', 'Backup restored')) }).catch(() => toast(t('تعذر استعادة النسخة الاحتياطية', 'Could not restore the backup'), 'error')) }} />
-      <Confirm open={resetAsk} onClose={() => setResetAsk(false)} danger title={t('إعادة بيانات العرض؟', 'Reset demo data?')} confirmLabel={t('إعادة التعيين', 'Reset')}
-        body={t('سيتم حذف كل التعديلات والفواتير الجديدة والرجوع للبيانات التجريبية الأصلية.', 'All changes and new invoices will be erased and the original demo data restored.')}
+      <Confirm open={resetAsk} onClose={() => setResetAsk(false)} danger title={desktop ? t('مسح بيانات النظام؟', 'Clear application data?') : t('إعادة بيانات العرض؟', 'Reset demo data?')} confirmLabel={t('إعادة التعيين', 'Reset')}
+        body={desktop ? t('سيتم حذف المنتجات والفواتير والحركات الحالية نهائيًا من قاعدة البيانات المحلية.', 'Products, invoices, and stock movements will be permanently removed from the local database.') : t('سيتم حذف كل التعديلات والفواتير الجديدة والرجوع للبيانات التجريبية الأصلية.', 'All changes and new invoices will be erased and the original demo data restored.')}
         onConfirm={() => { reset(); toast(t('تمت إعادة البيانات', 'Demo data reset')) }} />
     </div>
   )

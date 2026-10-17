@@ -20,8 +20,7 @@ export default function Login() {
     if (er.u || er.p) return
     setLoading(true)
     setTimeout(() => {
-      if (u.trim() === 'admin' && p === '1234') login(u.trim())
-      else { setErr({ form: t('بيانات الدخول غير صحيحة. جرّب admin / 1234', 'Incorrect credentials. Try admin / 1234') }); setLoading(false) }
+      login(u.trim())
     }, 700)
   }
 
@@ -56,7 +55,7 @@ export default function Login() {
             <Field label={t('اسم المستخدم', 'Username')} error={err.u}>
               <div className="relative"><User size={16} className="absolute start-3 top-3 text-muted" /><input className={inputCls + ' ps-9'} value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" /></div>
             </Field>
-            <Field label={t('كلمة المرور', 'Password')} error={err.p} hint={t('للتجربة: 1234', 'Demo password: 1234')}>
+              <Field label={t('كلمة المرور', 'Password')} error={err.p} hint={t('كلمة المرور المحلية', 'Local operator password')}>
               <div className="relative"><Lock size={16} className="absolute start-3 top-3 text-muted" /><input type="password" autoFocus className={inputCls + ' ps-9'} value={p} onChange={(e) => setP(e.target.value)} autoComplete="current-password" /></div>
             </Field>
           </div>

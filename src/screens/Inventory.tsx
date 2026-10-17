@@ -111,11 +111,13 @@ export function StockDialog({ open, mode: initialMode, productId, onClose }: { o
 
   const newAvg = p && mode === 'receive' && qn > 0 && cn > 0 ? round2(((Math.max(p.stock, 0) / k) * p.avgCost + qn * cn) / (Math.max(p.stock, 0) / k + qn)) : null
 
-  const submit = () => {
+  const submit = async () => {
     setTried(true)
     if (!ok || !p) return
-    if (mode === 'receive') { receive(p.id, base, cn, note.trim() || t('استلام بضاعة', 'Stock received')); toast(t(`تم استلام ${f.qty(p.unit, base)} من ${p.nameAr}`, `Received ${f.qty(p.unit, base)} of ${p.nameEn}`)) }
-    else { adjust(p.id, dir === 'in' ? base : -base, reasons[reason] + (note.trim() ? ` — ${note.trim()}` : '')); toast(t('تم تسجيل التسوية', 'Adjustment recorded')) }
+    try {
+      if (mode === 'receive') { await receive(p.id, base, cn, note.trim() || t('استلام بضاعة', 'Stock received')); toast(t(`تم استلام ${f.qty(p.unit, base)} من ${p.nameAr}`, `Received ${f.qty(p.unit, base)} of ${p.nameEn}`)) }
+      else { await adjust(p.id, dir === 'in' ? base : -base, reasons[reason] + (note.trim() ? ` — ${note.trim()}` : '')); toast(t('تم تسجيل التسوية', 'Adjustment recorded')) }
+    } catch { toast(t('تعذر حفظ حركة المخزون', 'Could not save the stock movement'), 'error'); return }
     onClose()
   }
   const E = (key: string) => (tried ? errors[key] : undefined)

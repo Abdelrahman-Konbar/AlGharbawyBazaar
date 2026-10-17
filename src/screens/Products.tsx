@@ -83,7 +83,6 @@ export function ProductDetails({ id }: { id: string }) {
   const since = Date.now() - 30 * 86400000
   let sold = 0, rev = 0, cost = 0
   state.sales.filter((s) => s.date >= since).forEach((s) => s.lines.forEach((l) => { if (l.productId === id) { sold += l.qty; rev += l.total; cost += l.cost } }))
-  const hasSales = state.sales.some((s) => s.lines.some((l) => l.productId === id))
   const margin = p.price ? ((p.price - p.avgCost) / p.price) * 100 : 0
   const value = (p.unit === 'weight' ? p.stock / 1000 : p.stock) * p.avgCost
   const pct = Math.min(100, (p.stock / Math.max(p.lowStock * 3, 1)) * 100)
@@ -157,12 +156,12 @@ export function ProductDetails({ id }: { id: string }) {
               ))}
             </Card>
           )}
-          <button onClick={() => (hasSales ? toast(t('لا يمكن حذف منتج له مبيعات مسجلة', 'Products with recorded sales cannot be deleted'), 'error') : setDel(true))} className="inline-flex items-center gap-2 text-sm text-[#a63d2f] hover:underline cursor-pointer"><Trash2 size={14} />{t('حذف المنتج', 'Delete product')}</button>
+          <button onClick={() => setDel(true)} className="inline-flex items-center gap-2 text-sm text-[#a63d2f] hover:underline cursor-pointer"><Trash2 size={14} />{t('أرشفة المنتج', 'Archive product')}</button>
         </div>
       </div>
-      <Confirm open={del} onClose={() => setDel(false)} danger title={t('حذف المنتج؟', 'Delete product?')} confirmLabel={t('حذف نهائي', 'Delete')}
-        body={t(`سيتم حذف "${p.nameAr}" وكل حركات مخزونه. لا يمكن التراجع.`, `"${p.nameEn}" and its stock movements will be removed. This cannot be undone.`)}
-        onConfirm={() => { deleteProduct(p.id); toast(t('تم حذف المنتج', 'Product deleted')); nav.go({ name: 'products' }) }} />
+      <Confirm open={del} onClose={() => setDel(false)} danger title={t('أرشفة المنتج؟', 'Archive product?')} confirmLabel={t('أرشفة', 'Archive')}
+        body={t(`سيتم إخفاء "${p.nameAr}" من الكتالوج مع الاحتفاظ بكل حركات المخزون والمبيعات.`, `"${p.nameEn}" will be hidden from the catalog while all stock movements and sales history are preserved.`)}
+        onConfirm={() => { Promise.resolve(deleteProduct(p.id)).then(() => { toast(t('تم حذف المنتج', 'Product archived')); nav.go({ name: 'products' }) }).catch(() => toast(t('تعذر أرشفة المنتج', 'Could not archive the product'), 'error')) }} />
     </div>
   )
 }
@@ -188,7 +187,7 @@ export function ProductForm({ open, id, onClose }: { open: boolean; id?: string;
   const set = (k: keyof FormState, val: any) => setV((x) => ({ ...x, [k]: val }))
   const uLabel = v.unit === 'weight' ? t('كجم', 'kg') : t('قطعة', 'pcs')
 
-  const submit = () => {
+  const submit = async () => {
     const e: Record<string, string> = {}
     if (!v.nameAr.trim()) e.nameAr = t('مطلوب', 'Required')
     if (!v.nameEn.trim()) e.nameEn = t('مطلوب', 'Required')
@@ -212,7 +211,8 @@ export function ProductForm({ open, id, onClose }: { open: boolean; id?: string;
       packs: v.unit === 'weight' ? v.packs.map((p): Pack => ({ id: p.id, grams: parseInt(p.grams), price: parseFloat(p.price) })) : [],
     }
     const oq = parseFloat(v.openQty || '0')
-    saveProduct(product, editing ? undefined : { qty: Math.round(oq * k), cost: parseFloat(v.openCost || '0') })
+    try { await saveProduct(product, editing ? undefined : { qty: Math.round(oq * k), cost: parseFloat(v.openCost || '0') }) }
+    catch { toast(t('تعذر حفظ المنتج', 'Could not save the product'), 'error'); return }
     toast(editing ? t('تم حفظ التعديلات', 'Changes saved') : t('تمت إضافة المنتج', 'Product added'))
     onClose()
     if (!editing) nav.go({ name: 'product', id: pid })

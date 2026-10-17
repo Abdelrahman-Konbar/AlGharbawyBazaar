@@ -169,8 +169,14 @@ export function lineInfo(p: Product, c: CartLine) {
   return { base: c.qty, unitPrice: p.price, total: round2(p.price * c.qty), packGrams: undefined }
 }
 
+function emptyState(): State {
+  return { products: [], movements: [], sales: [], settings: { storeName: 'Al-Gharbawy Bazaar', phone: '', address: '', receiptFooter: '', cashier: 'Store manager' }, seq: 0 }
+}
+
 function useStoreImpl() {
+  const desktop = typeof window !== 'undefined' && Boolean(window.electronAPI)
   const [state, setState] = useState<State>(() => {
+    if (desktop) return emptyState()
     try { const raw = localStorage.getItem(KEY); if (raw) return JSON.parse(raw) } catch {}
     return seed()
   })
@@ -178,7 +184,14 @@ function useStoreImpl() {
   const [user, setUser] = useState<string | null>(() => sessionStorage.getItem(KEY + '-user'))
   const [savedAt, setSavedAt] = useState<number>(Date.now())
 
-  useEffect(() => { localStorage.setItem(KEY, JSON.stringify(state)); setSavedAt(Date.now()) }, [state])
+  useEffect(() => {
+    if (desktop) return
+    localStorage.setItem(KEY, JSON.stringify(state)); setSavedAt(Date.now())
+  }, [desktop, state])
+  useEffect(() => {
+    if (!window.electronAPI) return
+    window.electronAPI.getState().then((remote) => { setState(remote as State); setSavedAt(Date.now()) }).catch((error) => console.error('Could not load local database', error))
+  }, [])
   useEffect(() => {
     localStorage.setItem(KEY + '-lang', lang)
     document.documentElement.lang = lang
@@ -192,6 +205,7 @@ function useStoreImpl() {
     login(u: string) { sessionStorage.setItem(KEY + '-user', u); setUser(u) },
     logout() { sessionStorage.removeItem(KEY + '-user'); setUser(null) },
     saveProduct(p: Product, opening?: { qty: number; cost: number }) {
+      if (window.electronAPI) return window.electronAPI.saveProduct(p, opening).then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
       setState((s) => {
         const exists = s.products.some((x) => x.id === p.id)
         if (exists) return { ...s, products: s.products.map((x) => (x.id === p.id ? { ...x, ...p, stock: x.stock, avgCost: x.avgCost } : x)) }
@@ -201,9 +215,11 @@ function useStoreImpl() {
       })
     },
     deleteProduct(id: string) {
+      if (window.electronAPI) return window.electronAPI.archiveProduct(id).then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
       setState((s) => ({ ...s, products: s.products.filter((p) => p.id !== id), movements: s.movements.filter((m) => m.productId !== id) }))
     },
     receive(productId: string, qty: number, cost: number, note: string) {
+      if (window.electronAPI) return window.electronAPI.receive(productId, qty, cost, note).then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
       setState((s) => {
         const products = s.products.map((p) => {
           if (p.id !== productId) return p
@@ -217,13 +233,18 @@ function useStoreImpl() {
       })
     },
     adjust(productId: string, delta: number, note: string) {
+      if (window.electronAPI) return window.electronAPI.adjust(productId, delta, note).then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
       setState((s) => {
         const products = s.products.map((p) => (p.id === productId ? { ...p, stock: p.stock + delta } : p))
         const p = products.find((x) => x.id === productId)!
         return { ...s, products, movements: [...s.movements, { id: uid(), productId, type: 'adjust', qty: delta, unitCost: p.avgCost, balance: p.stock, date: Date.now(), note }] }
       })
     },
-    checkout(cart: CartLine[], cash: number): { ok: true; sale: Sale } | { ok: false; error: string } {
+    checkout(cart: CartLine[], cash: number): { ok: true; sale: Sale } | { ok: false; error: string } | Promise<{ ok: true; sale: Sale } | { ok: false; error: string }> {
+      if (window.electronAPI) return window.electronAPI.checkout(cart, cash).then((result) => {
+        if (!result.ok) return result
+        return window.electronAPI!.getState().then((remote) => { setState(remote as State); return result })
+      })
       const need: Record<string, number> = {}
       for (const c of cart) {
         const p = state.products.find((x) => x.id === c.productId)
@@ -253,9 +274,18 @@ function useStoreImpl() {
       })
       return { ok: true, sale }
     },
-    saveSettings(st: Settings) { setState((s) => ({ ...s, settings: st })) },
-    restore(data: State) { setState(data) },
-    reset() { setState(seed()) },
+    saveSettings(st: Settings) {
+      if (window.electronAPI) return window.electronAPI.saveSettings(st).then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
+      setState((s) => ({ ...s, settings: st }))
+    },
+    restore(data: State) {
+      if (window.electronAPI) return window.electronAPI.restore(data).then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
+      setState(data)
+    },
+    reset() {
+      if (window.electronAPI) return window.electronAPI.reset().then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
+      setState(seed())
+    },
   }
 
   return { state, lang, setLang: setLangState, user, t, pname, savedAt, ...actions }

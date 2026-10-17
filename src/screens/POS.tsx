@@ -62,14 +62,16 @@ export default function POS() {
     lock.current = true
     setBusy(true)
     setTimeout(() => {
-      const r = checkout(validCart, cashN)
-      if (r.ok) {
-        setCart([]); setCash(''); setError('')
-        toast(t(`تم تسجيل الفاتورة ${r.sale.number}`, `Invoice ${r.sale.number} saved`))
-        nav.openSale(r.sale.id)
-      } else setError(r.error)
-      setBusy(false)
-      lock.current = false
+      Promise.resolve(checkout(validCart, cashN)).then((r) => {
+        if (r.ok) {
+          setCart([]); setCash(''); setError('')
+          toast(t(`تم تسجيل الفاتورة ${r.sale.number}`, `Invoice ${r.sale.number} saved`))
+          nav.openSale(r.sale.id)
+        } else setError(r.error)
+      }).catch(() => setError(t('تعذر حفظ الفاتورة', 'Could not save the invoice'))).finally(() => {
+        setBusy(false)
+        lock.current = false
+      })
     }, 450)
   }
 

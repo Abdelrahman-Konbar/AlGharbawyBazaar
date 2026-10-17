@@ -3,26 +3,51 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "description": "Offline-first retail management for Al-Gharbawy Bazaar",
+  "author": "Al-Gharbawy Bazaar",
+  "main": "electron-dist/electron/main.js",
   "scripts": {
     "dev": "vite",
+    "desktop": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://localhost:8443 && electron --require tsx/cjs electron/main.ts\"",
     "build": "vite build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:desktop": "npm run build:electron && npm run build && electron-builder --dir",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "lucide-react": "^1.59.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "concurrently": "^10.0.6",
+    "electron": "^44.9.0",
+    "electron-builder": "^26.15.3",
     "oxfmt": "^0.2.0",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
-    "vite": "^8.0.5"
+    "vite": "^8.0.5",
+    "vitest": "^5.0.5",
+    "wait-on": "^9.5.1"
+  },
+  "build": {
+    "appId": "com.algharbawy.bazaar",
+    "productName": "Al-Gharbawy Bazaar",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "electron-dist/**/*", "package.json"],
+    "npmRebuild": false,
+    "win": { "target": "nsis" }
   }
 }

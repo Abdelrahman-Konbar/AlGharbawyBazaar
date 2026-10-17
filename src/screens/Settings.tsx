@@ -75,7 +75,7 @@ export default function Settings() {
 
       <Confirm open={!!pending} onClose={() => setPending(null)} danger title={t('استعادة النسخة الاحتياطية؟', 'Restore this backup?')} confirmLabel={t('استعادة', 'Restore')}
         body={pending && <>{t('سيتم استبدال كل البيانات الحالية بمحتوى الملف:', 'All current data will be replaced with the file contents:')}<span className="num mt-2 block font-medium">{pending.products.length} {t('منتج', 'products')} · {pending.sales.length} {t('فاتورة', 'invoices')}</span></>}
-        onConfirm={() => { restore(pending!); setS(pending!.settings); toast(t('تمت الاستعادة بنجاح', 'Backup restored')) }} />
+        onConfirm={() => { const data = pending!; Promise.resolve(restore(data)).then(() => { setS(data.settings); toast(t('تمت الاستعادة بنجاح', 'Backup restored')) }).catch(() => toast(t('تعذر استعادة النسخة الاحتياطية', 'Could not restore the backup'), 'error')) }} />
       <Confirm open={resetAsk} onClose={() => setResetAsk(false)} danger title={t('إعادة بيانات العرض؟', 'Reset demo data?')} confirmLabel={t('إعادة التعيين', 'Reset')}
         body={t('سيتم حذف كل التعديلات والفواتير الجديدة والرجوع للبيانات التجريبية الأصلية.', 'All changes and new invoices will be erased and the original demo data restored.')}
         onConfirm={() => { reset(); toast(t('تمت إعادة البيانات', 'Demo data reset')) }} />

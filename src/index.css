@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-forest: #1f4035;
+  --color-forest-2: #2a5245;
+  --color-ivory: #f7f3ea;
+  --color-amber: #ce9853;
+  --color-amber-soft: #f5e8d4;
+  --color-olive: #26332c;
+  --color-line: #e6e0d5;
+  --color-muted: #75806f;
+  --font-sans: 'Inter', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+}
+
+html[lang='ar'] body { font-family: 'IBM Plex Sans Arabic', 'Inter', system-ui, sans-serif; }
+body { background: var(--color-ivory); color: var(--color-olive); -webkit-font-smoothing: antialiased; }
+.num { font-family: 'Inter', sans-serif; font-variant-numeric: tabular-nums; }
+.pattern {
+  background-image: radial-gradient(circle at 1px 1px, rgba(206,152,83,.18) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+@keyframes pop { from { opacity: 0; transform: scale(.97) } to { opacity: 1; transform: none } }
+@keyframes slideIn { from { transform: translateX(100%) } to { transform: none } }
+@keyframes slideInRtl { from { transform: translateX(-100%) } to { transform: none } }
+@keyframes shimmer { 0% { background-position: -400px 0 } 100% { background-position: 400px 0 } }
+.skeleton { background: linear-gradient(90deg,#efe9dd 0,#f8f4ec 50%,#efe9dd 100%); background-size: 800px 100%; animation: shimmer 1.2s infinite linear; border-radius: 8px; }
+.anim-up { animation: fadeUp .28s ease both; }
+.anim-pop { animation: pop .18s ease both; }
+[dir='ltr'] .anim-drawer { animation: slideIn .25s cubic-bezier(.2,.8,.2,1) both; }
+[dir='rtl'] .anim-drawer { animation: slideInRtl .25s cubic-bezier(.2,.8,.2,1) both; }
+input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type='number'] { -moz-appearance: textfield; }
+::-webkit-scrollbar { width: 10px; height: 10px }
+::-webkit-scrollbar-thumb { background: #ddd5c6; border-radius: 10px; border: 3px solid transparent; background-clip: content-box }
+@media print {
+  body * { visibility: hidden !important; }
+  .print-area, .print-area * { visibility: visible !important; }
+  .print-area { position: fixed; inset: 0; box-shadow: none !important; }
+}

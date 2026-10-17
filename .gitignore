@@ -2,6 +2,8 @@ node_modules/
 dist/
 electron-dist/
 release/
+artifacts/
+artifacts-batch02/
 build/
 .cache/
 .env*

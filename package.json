@@ -19,6 +19,8 @@
     "typecheck": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
     "better-sqlite3": "^13.0.3",
     "lucide-react": "^1.59.0",
     "react": "^19.0.0",
@@ -45,9 +47,21 @@
   "build": {
     "appId": "com.algharbawy.bazaar",
     "productName": "Al-Gharbawy Bazaar",
-    "directories": { "output": "release" },
-    "files": ["dist/**/*", "electron-dist/**/*", "package.json"],
+    "directories": {
+      "output": "../AlGharbawyBazaar-artifacts"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-dist/**/*",
+      "package.json"
+    ],
     "npmRebuild": false,
-    "win": { "target": "nsis" }
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "win": {
+      "target": "nsis"
+    }
   }
 }

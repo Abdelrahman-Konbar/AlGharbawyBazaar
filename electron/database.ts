@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type {
@@ -13,13 +13,16 @@ import type {
   SaleLine,
   Settings,
   Unit,
+  Permission,
+  UserRole,
+  UserSession,
 } from '../shared/contracts.js'
 
 const MONEY_SCALE = 1000
 
 export class DomainError extends Error {
   constructor(
-    public readonly code: 'VALIDATION_ERROR' | 'NOT_FOUND' | 'DUPLICATE_SKU' | 'INSUFFICIENT_STOCK' | 'INVALID_OPERATION' | 'DATABASE_ERROR',
+    public readonly code: 'VALIDATION_ERROR' | 'NOT_FOUND' | 'DUPLICATE_SKU' | 'INSUFFICIENT_STOCK' | 'INVALID_OPERATION' | 'AUTHENTICATION_ERROR' | 'AUTHORIZATION_ERROR' | 'DATABASE_ERROR',
     message: string,
     public readonly details?: Record<string, unknown>,
   ) {
@@ -111,13 +114,29 @@ const migrations = [
     CREATE INDEX IF NOT EXISTS idx_movements_product_date ON inventory_movements(product_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date);
     CREATE INDEX IF NOT EXISTS idx_sale_lines_product ON sale_lines(product_id);
+    `,
+  `
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'manager', 'cashier')),
+      active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_login_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_active ON users(active);
   `,
 ]
 
 export class BazaarDatabase {
   readonly db: Database.Database
+  readonly filePath: string
 
   constructor(filePath: string) {
+    this.filePath = filePath
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     this.db = new Database(filePath)
     this.db.pragma('journal_mode = WAL')
@@ -149,6 +168,37 @@ export class BazaarDatabase {
     this.db.close()
   }
 
+  checkpoint() {
+    this.db.pragma('wal_checkpoint(TRUNCATE)')
+  }
+
+  authStatus(): { configured: boolean } {
+    const row = this.db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }
+    return { configured: row.count > 0 }
+  }
+
+  authenticate(username: string, password: string): UserSession {
+    validateCredentials(username, password)
+    const count = this.db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }
+    if (count.count === 0) {
+      const now = Date.now()
+      const user = this.createUser(username, password, 'admin', now)
+      return sessionForUser(user)
+    }
+    const row = this.db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username.trim()) as UserRow | undefined
+    if (!row || !verifyPassword(password, row.password_salt, row.password_hash)) throw new DomainError('AUTHENTICATION_ERROR', 'Incorrect username or password')
+    this.db.prepare('UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?').run(Date.now(), Date.now(), row.id)
+    return sessionForUser(row)
+  }
+
+  private createUser(username: string, password: string, role: UserRole, now = Date.now()): UserRow {
+    validateCredentials(username, password)
+    const credentials = hashPassword(password)
+    const row: UserRow = { id: uid(), username: username.trim(), password_salt: credentials.salt, password_hash: credentials.hash, role, active: 1, created_at: now, updated_at: now, last_login_at: now }
+    this.db.prepare('INSERT INTO users(id, username, password_salt, password_hash, role, active, created_at, updated_at, last_login_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)').run(row.id, row.username, row.password_salt, row.password_hash, row.role, now, now, now)
+    return row
+  }
+
   getState(): AppState {
     const products = this.db.prepare('SELECT * FROM products WHERE archived = 0 ORDER BY created_at DESC').all() as ProductRow[]
     const packs = this.db.prepare('SELECT * FROM product_packs').all() as PackRow[]
@@ -169,6 +219,7 @@ export class BazaarDatabase {
 
   saveProduct(input: ProductInput, opening?: { qty: number; cost: number }): Product {
     validateProduct(input)
+    if (opening && (!Number.isInteger(opening.qty) || opening.qty < 0 || !Number.isFinite(opening.cost) || opening.cost < 0 || (opening.qty > 0 && opening.cost <= 0))) throw new DomainError('VALIDATION_ERROR', 'Invalid opening stock values')
     const now = Date.now()
     const existing = this.db.prepare('SELECT * FROM products WHERE id = ?').get(input.id) as ProductRow | undefined
     const duplicate = this.db.prepare('SELECT id FROM products WHERE sku = ? AND id <> ?').get(input.sku.trim(), input.id)
@@ -331,6 +382,7 @@ type MovementRow = { id: string; product_id: string; movement_type: Movement['ty
 type SettingsRow = { store_name: string; phone: string; address: string; receipt_footer: string; cashier: string }
 type SaleRow = { id: string; invoice_number: string; sale_date: number; total_milli: number; cash_milli: number; change_milli: number; cogs_milli: number }
 type SaleLineRow = { sale_id: string; product_id: string; name_ar: string; name_en: string; unit: Unit; mode: SaleLine['mode']; pack_grams: number | null; item_count: number; quantity_base: number; unit_price_milli: number; total_milli: number; cost_milli: number }
+type UserRow = { id: string; username: string; password_salt: string; password_hash: string; role: UserRole; active: number; created_at: number; updated_at: number; last_login_at: number | null }
 
 function validateProduct(product: ProductInput) {
   if (!product.id || !product.sku.trim() || !product.nameAr.trim() || !product.nameEn.trim() || !product.category) throw new DomainError('VALIDATION_ERROR', 'Product names, SKU, and category are required')
@@ -340,10 +392,40 @@ function validateProduct(product: ProductInput) {
   for (const pack of product.packs) if (!Number.isInteger(pack.grams) || pack.grams <= 0 || !Number.isFinite(pack.price) || pack.price <= 0) throw new DomainError('VALIDATION_ERROR', 'Pack weight and price must be valid')
 }
 
+export const permissionsForRole = (role: UserRole): Permission[] => {
+  if (role === 'admin') return ['sell', 'viewSales', 'manageProducts', 'manageInventory', 'viewReports', 'manageSettings', 'manageBackups', 'manageUsers']
+  if (role === 'manager') return ['sell', 'viewSales', 'manageProducts', 'manageInventory', 'viewReports', 'manageSettings', 'manageBackups']
+  return ['sell', 'viewSales']
+}
+
+function validateCredentials(username: string, password: string) {
+  if (!/^[\p{L}\p{N}._-]{3,64}$/u.test(username.trim())) throw new DomainError('VALIDATION_ERROR', 'Username must be 3-64 letters, numbers, dots, underscores, or hyphens')
+  if (password.length < 8 || password.length > 128) throw new DomainError('VALIDATION_ERROR', 'Password must be 8-128 characters')
+}
+
+function hashPassword(password: string) {
+  const salt = randomBytes(16)
+  const hash = scryptSync(password, salt, 64)
+  return { salt: salt.toString('base64'), hash: hash.toString('base64') }
+}
+
+function verifyPassword(password: string, saltBase64: string, hashBase64: string) {
+  const expected = Buffer.from(hashBase64, 'base64')
+  const actual = scryptSync(password, Buffer.from(saltBase64, 'base64'), expected.length)
+  return expected.length === actual.length && timingSafeEqual(expected, actual)
+}
+
+function sessionForUser(user: Pick<UserRow, 'id' | 'username' | 'role'>): UserSession {
+  return { id: user.id, username: user.username, role: user.role, permissions: permissionsForRole(user.role) }
+}
+
 function lineInfo(product: ProductRow, productPacks: PackRow[], line: CartLine) {
   if (!Number.isInteger(line.qty) || line.qty <= 0) throw new DomainError('VALIDATION_ERROR', 'Cart quantity must be a positive whole base-unit value')
+  if (product.unit === 'piece' && line.mode !== 'piece') throw new DomainError('INVALID_OPERATION', 'Piece products can only be sold by piece')
+  if (product.unit === 'weight' && line.mode === 'piece') throw new DomainError('INVALID_OPERATION', 'Weight products cannot be sold as pieces')
   if (line.mode === 'weight') return { base: line.qty, unitPrice: intToMoney(product.price_milli), total: roundMoney((line.qty / 1000) * intToMoney(product.price_milli)), packGrams: undefined }
   if (line.mode === 'pack') {
+    if (product.unit !== 'weight') throw new DomainError('INVALID_OPERATION', 'Packs require a weight product')
     const pack = productPacks.find((candidate) => candidate.id === line.packId)
     if (!pack) throw new DomainError('INVALID_OPERATION', 'Pack definition not found')
     return { base: pack.grams * line.qty, unitPrice: intToMoney(pack.price_milli), total: roundMoney(intToMoney(pack.price_milli) * line.qty), packGrams: pack.grams }

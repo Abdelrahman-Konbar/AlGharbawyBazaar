@@ -11,17 +11,17 @@ export default function Login() {
   const [err, setErr] = useState<{ u?: string; p?: string; form?: string }>({})
   const [loading, setLoading] = useState(false)
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     const er: typeof err = {}
     if (!u.trim()) er.u = t('أدخل اسم المستخدم', 'Enter your username')
     if (!p) er.p = t('أدخل كلمة المرور', 'Enter your password')
+    if (p && p.length < 8) er.p = t('كلمة المرور 8 حروف على الأقل', 'Password must be at least 8 characters')
     setErr(er)
     if (er.u || er.p) return
     setLoading(true)
-    setTimeout(() => {
-      login(u.trim())
-    }, 700)
+    try { await login(u.trim(), p) }
+    catch (error) { setErr({ form: error instanceof Error ? error.message : t('تعذر تسجيل الدخول', 'Unable to sign in') }); setLoading(false) }
   }
 
   return (

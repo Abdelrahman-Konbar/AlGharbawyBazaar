@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { ElectronApi } from '../shared/contracts.js'
 
 const channels: Array<keyof Omit<ElectronApi, 'platform'>> = [
+  'authStatus',
+  'login',
+  'logout',
   'getState',
   'saveProduct',
   'archiveProduct',
@@ -11,10 +14,16 @@ const channels: Array<keyof Omit<ElectronApi, 'platform'>> = [
   'saveSettings',
   'restore',
   'reset',
+  'getBackupStatus',
+  'createBackup',
+  'restoreBackupFromDialog',
 ]
 
 const api: ElectronApi = {
   platform: process.platform as ElectronApi['platform'],
+  authStatus: () => ipcRenderer.invoke('authStatus'),
+  login: (username, password) => ipcRenderer.invoke('login', username, password),
+  logout: () => ipcRenderer.invoke('logout'),
   getState: () => ipcRenderer.invoke('getState'),
   saveProduct: (product, opening) => ipcRenderer.invoke('saveProduct', product, opening),
   archiveProduct: (id) => ipcRenderer.invoke('archiveProduct', id),
@@ -24,6 +33,9 @@ const api: ElectronApi = {
   saveSettings: (settings) => ipcRenderer.invoke('saveSettings', settings),
   restore: (state) => ipcRenderer.invoke('restore', state),
   reset: () => ipcRenderer.invoke('reset'),
+  getBackupStatus: () => ipcRenderer.invoke('getBackupStatus'),
+  createBackup: () => ipcRenderer.invoke('createBackup'),
+  restoreBackupFromDialog: () => ipcRenderer.invoke('restoreBackupFromDialog'),
 }
 
 for (const channel of channels) {

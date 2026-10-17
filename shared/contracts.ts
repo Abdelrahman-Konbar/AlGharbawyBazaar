@@ -1,6 +1,8 @@
 export type Lang = 'ar' | 'en'
 export type Unit = 'weight' | 'piece'
 export type MoveType = 'opening' | 'receive' | 'sale' | 'adjust'
+export type UserRole = 'admin' | 'manager' | 'cashier'
+export type Permission = 'sell' | 'viewSales' | 'manageProducts' | 'manageInventory' | 'viewReports' | 'manageSettings' | 'manageBackups' | 'manageUsers'
 
 export interface Pack {
   id: string
@@ -104,6 +106,8 @@ export type DomainErrorCode =
   | 'DUPLICATE_SKU'
   | 'INSUFFICIENT_STOCK'
   | 'INVALID_OPERATION'
+  | 'AUTHENTICATION_ERROR'
+  | 'AUTHORIZATION_ERROR'
   | 'DATABASE_ERROR'
 
 export interface DomainErrorShape {
@@ -112,7 +116,37 @@ export interface DomainErrorShape {
   details?: Record<string, unknown>
 }
 
+export interface UserSession {
+  id: string
+  username: string
+  role: UserRole
+  permissions: Permission[]
+}
+
+export interface AuthStatus {
+  configured: boolean
+  session: UserSession | null
+}
+
+export interface BackupStatus {
+  enabled: boolean
+  directory: string
+  lastBackupAt: number | null
+  lastBackupPath: string | null
+  lastError: string | null
+}
+
+export interface BackupResult {
+  path: string
+  createdAt: number
+  size: number
+  checksum: string
+}
+
 export interface ProductServiceApi {
+  authStatus(): Promise<AuthStatus>
+  login(username: string, password: string): Promise<UserSession>
+  logout(): Promise<void>
   getState(): Promise<AppState>
   saveProduct(product: ProductInput, opening?: { qty: number; cost: number }): Promise<Product>
   archiveProduct(id: string): Promise<void>
@@ -122,6 +156,9 @@ export interface ProductServiceApi {
   saveSettings(settings: Settings): Promise<void>
   restore(state: AppState): Promise<void>
   reset(): Promise<void>
+  getBackupStatus(): Promise<BackupStatus>
+  createBackup(): Promise<BackupResult>
+  restoreBackupFromDialog(): Promise<{ restored: boolean; path?: string }>
 }
 
 export interface ElectronApi extends ProductServiceApi {

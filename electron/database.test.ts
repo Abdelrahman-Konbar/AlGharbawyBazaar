@@ -3,9 +3,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { CartLine, ProductInput } from '../shared/contracts.js'
-import { BazaarDatabase } from './database.js'
+import { BazaarDatabase, DomainError, permissionsForRole } from './database.js'
+import { BackupManager } from './backup.js'
 
 const files: string[] = []
+const directories: string[] = []
 const open = () => {
   const file = path.join(os.tmpdir(), `al-gharbawy-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`)
   files.push(file)
@@ -19,12 +21,13 @@ afterEach(() => {
   for (const file of files.splice(0)) {
     for (const suffix of ['', '-wal', '-shm']) fs.rmSync(file + suffix, { force: true })
   }
+  for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
 })
 
 describe('BazaarDatabase', () => {
   it('runs versioned migrations and starts without demo data', () => {
     const db = open()
-    expect((db.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number }).version).toBe(1)
+    expect((db.db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number }).version).toBe(2)
     expect(db.getState().products).toHaveLength(0)
     db.close()
   })
@@ -102,6 +105,67 @@ describe('BazaarDatabase', () => {
     expect(result.ok).toBe(true)
     expect(db.getState().products[0].stock).toBe(1)
     expect(db.getState().sales[0].lines[0].qty).toBe(2)
+    db.close()
+  })
+
+  it('completes a receive-to-sale workflow with frozen historical COGS', () => {
+    const db = open()
+    db.saveProduct({ ...product, packs: [] })
+    db.receive('P-1', 2000, 120, 'Supplier A')
+    const sale = db.checkout([{ key: 'weighted', productId: 'P-1', mode: 'weight', qty: 500 }], 200)
+    expect(sale).toMatchObject({ ok: true })
+    if (!sale.ok) throw new Error(sale.error)
+    expect(sale.sale.total).toBe(150)
+    expect(sale.sale.cogs).toBe(60)
+    expect(db.getState().products[0]).toMatchObject({ stock: 1500, avgCost: 120 })
+    expect(db.getState().movements.map((movement) => movement.type)).toEqual(['receive', 'sale'])
+    db.close()
+  })
+
+  it('rejects incompatible sale units before changing stock', () => {
+    const db = open()
+    db.saveProduct({ ...product, packs: [] }, { qty: 1000, cost: 100 })
+    const result = db.checkout([{ key: 'invalid', productId: 'P-1', mode: 'piece', qty: 1 }], 300)
+    expect(result).toMatchObject({ ok: false })
+    expect(db.getState().products[0].stock).toBe(1000)
+    expect(db.getState().sales).toHaveLength(0)
+    db.close()
+  })
+
+  it('creates a secure first administrator and persists authentication', () => {
+    const db = open()
+    expect(db.authStatus().configured).toBe(false)
+    const first = db.authenticate('owner', 'correct horse battery staple')
+    expect(first.role).toBe('admin')
+    expect(first.permissions).toContain('manageBackups')
+    expect(db.authStatus().configured).toBe(true)
+    const stored = db.db.prepare('SELECT password_hash, password_salt FROM users WHERE username = ?').get('owner') as { password_hash: string; password_salt: string }
+    expect(stored.password_hash).not.toBe('correct horse battery staple')
+    expect(stored.password_salt).not.toBe('')
+    expect(() => db.authenticate('owner', 'wrong password')).toThrow(DomainError)
+    db.close()
+    const reopened = new BazaarDatabase(files[files.length - 1])
+    expect(reopened.authenticate('owner', 'correct horse battery staple').username).toBe('owner')
+    reopened.close()
+  })
+
+  it('defines least-privilege role permissions', () => {
+    expect(permissionsForRole('cashier')).toEqual(['sell', 'viewSales'])
+    expect(permissionsForRole('manager')).toContain('manageInventory')
+    expect(permissionsForRole('manager')).not.toContain('manageUsers')
+  })
+
+  it('creates and validates an atomic SQLite backup, rejecting tampering', async () => {
+    const db = open()
+    db.saveProduct({ ...product, packs: [] }, { qty: 500, cost: 100 })
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'al-gharbawy-backup-'))
+    directories.push(directory)
+    const manager = new BackupManager(directory, () => db)
+    const result = await manager.createBackup('manual')
+    manager.validateBackup(result.path)
+    expect(manager.getStatus().lastBackupPath).toBe(result.path)
+    fs.appendFileSync(result.path, 'tampered')
+    expect(() => manager.validateBackup(result.path)).toThrow(/checksum/i)
     db.close()
   })
 })

@@ -29,7 +29,7 @@ function Root() {
 
 function Shell() {
   const store = useStore()
-  const { t } = store
+  const { t, can } = store
   const [route, setRoute] = useState<Route>({ name: 'dashboard' })
   const [form, setForm] = useState<{ open: boolean; id?: string }>({ open: false })
   const [stock, setStock] = useState<{ open: boolean; mode: 'receive' | 'adjust'; productId?: string }>({ open: false, mode: 'receive' })
@@ -46,20 +46,25 @@ function Shell() {
   }
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'F2') { e.preventDefault(); setRoute({ name: 'pos' }) } }
+    const h = (e: KeyboardEvent) => { if (e.key === 'F2' && can('sell')) { e.preventDefault(); setRoute({ name: 'pos' }) } }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
   }, [])
 
-  const items: { name: Route['name']; icon: any; label: string; group: number; badge?: number }[] = [
+  useEffect(() => {
+    const required = route.name === 'pos' ? 'sell' : route.name === 'sales' ? 'viewSales' : route.name === 'products' || route.name === 'product' ? 'manageProducts' : route.name === 'inventory' || route.name === 'movements' ? 'manageInventory' : route.name === 'reports' ? 'viewReports' : route.name === 'settings' ? 'manageSettings' : undefined
+    if (required && !can(required)) setRoute({ name: 'dashboard' })
+  }, [route.name, can])
+
+  const items: { name: Route['name']; icon: any; label: string; group: number; permission?: import('../shared/contracts').Permission; badge?: number }[] = [
     { name: 'dashboard', icon: LayoutGrid, label: t('الرئيسية', 'Dashboard'), group: 0 },
-    { name: 'pos', icon: ScanLine, label: t('نقطة البيع', 'Point of Sale'), group: 0 },
-    { name: 'sales', icon: ReceiptText, label: t('سجل المبيعات', 'Sales History'), group: 0 },
-    { name: 'products', icon: Package, label: t('المنتجات', 'Products'), group: 1 },
-    { name: 'inventory', icon: Warehouse, label: t('المخزون', 'Inventory'), group: 1, badge: store.state.products.filter((p) => stockStatus(p) !== 'ok').length },
-    { name: 'movements', icon: ArrowLeftRight, label: t('حركات المخزون', 'Stock Movements'), group: 1 },
-    { name: 'reports', icon: LineChart, label: t('الأرباح والتقارير', 'Profits & Reports'), group: 2 },
-    { name: 'settings', icon: Cog, label: t('الإعدادات', 'Settings'), group: 2 },
+    { name: 'pos', icon: ScanLine, label: t('نقطة البيع', 'Point of Sale'), group: 0, permission: 'sell' },
+    { name: 'sales', icon: ReceiptText, label: t('سجل المبيعات', 'Sales History'), group: 0, permission: 'viewSales' },
+    { name: 'products', icon: Package, label: t('المنتجات', 'Products'), group: 1, permission: 'manageProducts' },
+    { name: 'inventory', icon: Warehouse, label: t('المخزون', 'Inventory'), group: 1, permission: 'manageInventory', badge: store.state.products.filter((p) => stockStatus(p) !== 'ok').length },
+    { name: 'movements', icon: ArrowLeftRight, label: t('حركات المخزون', 'Stock Movements'), group: 1, permission: 'manageInventory' },
+    { name: 'reports', icon: LineChart, label: t('الأرباح والتقارير', 'Profits & Reports'), group: 2, permission: 'viewReports' },
+    { name: 'settings', icon: Cog, label: t('الإعدادات', 'Settings'), group: 2, permission: 'manageSettings' },
   ]
   const groups = [t('البيع', 'Selling'), t('البضاعة', 'Stock'), t('الإدارة', 'Manage')]
   const active = route.name === 'product' ? 'products' : route.name
@@ -74,7 +79,7 @@ function Shell() {
             {groups.map((g, gi) => (
               <div key={g} className="mt-4">
                 {!collapsed && <p className="mb-1.5 px-3 text-[11px] font-medium uppercase tracking-[.16em] text-ivory/40">{g}</p>}
-                {items.filter((i) => i.group === gi).map((i) => {
+                {items.filter((i) => i.group === gi && (!i.permission || can(i.permission))).map((i) => {
                   const on = active === i.name
                   return (
                     <button key={i.name} title={i.label} onClick={() => nav.go({ name: i.name })}
@@ -124,7 +129,7 @@ function Shell() {
 }
 
 function TopBar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { t, lang, setLang, state, pname } = useStore()
+  const { t, lang, setLang, state, pname, can } = useStore()
   const f = useFmt()
   const nav = { ...useNavSafe() }
   const [q, setQ] = useState('')
@@ -188,7 +193,7 @@ function TopBar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => v
             </>
           )}
         </div>
-        <Button variant="primary" icon={<Plus size={16} />} onClick={() => nav.go({ name: 'pos' })}>{t('بيع جديد', 'New sale')}</Button>
+        {can('sell') && <Button variant="primary" icon={<Plus size={16} />} onClick={() => nav.go({ name: 'pos' })}>{t('بيع جديد', 'New sale')}</Button>}
       </div>
     </header>
   )

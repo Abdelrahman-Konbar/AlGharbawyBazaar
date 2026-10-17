@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { Permission, UserSession } from '../shared/contracts'
 
 export type Lang = 'ar' | 'en'
 export type Unit = 'weight' | 'piece'
@@ -181,7 +182,9 @@ function useStoreImpl() {
     return seed()
   })
   const [lang, setLangState] = useState<Lang>(() => (localStorage.getItem(KEY + '-lang') as Lang) || 'ar')
-  const [user, setUser] = useState<string | null>(() => sessionStorage.getItem(KEY + '-user'))
+  const [user, setUser] = useState<string | null>(() => desktop ? null : sessionStorage.getItem(KEY + '-user'))
+  const [session, setSession] = useState<UserSession | null>(() => desktop ? null : { id: 'browser', username: 'operator', role: 'admin', permissions: ['sell', 'viewSales', 'manageProducts', 'manageInventory', 'viewReports', 'manageSettings', 'manageBackups', 'manageUsers'] })
+  const [authConfigured, setAuthConfigured] = useState(!desktop)
   const [savedAt, setSavedAt] = useState<number>(Date.now())
 
   useEffect(() => {
@@ -190,7 +193,13 @@ function useStoreImpl() {
   }, [desktop, state])
   useEffect(() => {
     if (!window.electronAPI) return
-    window.electronAPI.getState().then((remote) => { setState(remote as State); setSavedAt(Date.now()) }).catch((error) => console.error('Could not load local database', error))
+    window.electronAPI.authStatus().then((status) => {
+      setAuthConfigured(status.configured)
+      setUser(status.session?.username ?? null)
+      setSession(status.session)
+      if (!status.session) return null
+      return window.electronAPI!.getState().then((remote) => { setState(remote as State); setSavedAt(Date.now()) })
+    }).catch((error) => console.error('Could not initialize local authentication', error))
   }, [])
   useEffect(() => {
     localStorage.setItem(KEY + '-lang', lang)
@@ -202,8 +211,17 @@ function useStoreImpl() {
   const pname = (p: { nameAr: string; nameEn: string }) => (lang === 'ar' ? p.nameAr : p.nameEn)
 
   const actions = {
-    login(u: string) { sessionStorage.setItem(KEY + '-user', u); setUser(u) },
-    logout() { sessionStorage.removeItem(KEY + '-user'); setUser(null) },
+    login(u: string, password?: string) {
+      if (window.electronAPI) return window.electronAPI.login(u, password ?? '').then((nextSession) => window.electronAPI!.getState().then((remote) => { setAuthConfigured(true); setUser(nextSession.username); setSession(nextSession); setState(remote as State); return nextSession }))
+      sessionStorage.setItem(KEY + '-user', u); setUser(u)
+    },
+    logout() {
+      if (window.electronAPI) return window.electronAPI.logout().then(() => { setUser(null); setSession(null); setState(emptyState()) })
+      sessionStorage.removeItem(KEY + '-user'); setUser(null)
+    },
+    refresh() {
+      if (window.electronAPI) return window.electronAPI.getState().then((remote) => { setState(remote as State); setSavedAt(Date.now()) })
+    },
     saveProduct(p: Product, opening?: { qty: number; cost: number }) {
       if (window.electronAPI) return window.electronAPI.saveProduct(p, opening).then(() => window.electronAPI!.getState()).then((remote) => setState(remote as State))
       setState((s) => {
@@ -288,7 +306,8 @@ function useStoreImpl() {
     },
   }
 
-  return { state, lang, setLang: setLangState, user, t, pname, savedAt, ...actions }
+  const can = (permission: Permission) => !desktop || Boolean(session?.permissions.includes(permission))
+  return { state, lang, setLang: setLangState, user, session, can, authConfigured, t, pname, savedAt, ...actions }
 }
 
 type Store = ReturnType<typeof useStoreImpl>
